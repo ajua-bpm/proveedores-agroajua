@@ -677,6 +677,23 @@ function renderAll() {
           <span class="lbl">Empaque</span>
           <span class="pc-value">${p.empaque || 'caja'}</span>
         </div>
+
+        <div style="margin:10px 0 6px;padding:10px 12px;background:#F3F0E5;border-left:3px solid var(--muted);">
+          <div style="font-size:.66rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;">Definido por AGROAJUA (no editable)</div>
+          <div class="edit-grid">
+            <span class="lbl">Precio venta cliente</span>
+            <span class="pc-value"><b>Q ${fmt(parseFloat(p.precioVentaU)||0, 2)}</b> / ${isU ? 'unidad' : 'lb'}</span>
+          </div>
+          <div class="edit-grid">
+            <span class="lbl">Precio producto sugerido</span>
+            <span class="pc-value"><b>$ ${fmt(parseFloat(p.costoSugeridoMXN)||0, 2)}</b> MXN / ${uLbl}</span>
+          </div>
+          <div class="edit-grid">
+            <span class="lbl">Comisión AGROAJUA</span>
+            <span class="pc-value"><b>Q ${fmt(parseFloat(p.comPorU)||0, 2)}</b> / ${isU ? 'unidad' : 'lb'}</span>
+          </div>
+        </div>
+
         <div class="edit-grid">
           <span class="lbl">Pallets</span>
           <input class="edit-input" type="number" step="1" data-i="${i}" data-f="pallets" value="${p.pallets||0}" ${dis}>
