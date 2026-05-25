@@ -117,6 +117,52 @@ h2.section-title{font-family:'Source Serif 4',serif;font-size:1.55rem;font-weigh
 .propuesta-input:disabled{background:#F5F1E8;color:var(--muted);cursor:not-allowed;}
 .btn-action:disabled{opacity:.4;cursor:not-allowed;pointer-events:none;}
 
+/* ── Inputs editables productor ── */
+.edit-input{padding:6px 10px;border:1px solid var(--rule);border-radius:2px;font-family:inherit;font-size:.9rem;color:var(--ink);background:#FFFDF7;outline:none;width:100%;font-variant-numeric:tabular-nums lining-nums;}
+.edit-input:focus{border-color:var(--ochre);background:#fff;}
+.edit-input:disabled{background:#F5F1E8;color:var(--muted);cursor:not-allowed;}
+.edit-grid{display:grid;grid-template-columns:140px 1fr;gap:8px 14px;align-items:center;padding:5px 0;}
+.edit-grid .lbl{font-size:.78rem;color:var(--muted);font-weight:500;}
+.edit-grid .hint{font-size:.72rem;color:var(--muted);grid-column:2;margin-top:-2px;font-style:italic;}
+
+/* ── Breakdown por producto (estilo cotizador) ── */
+.bd-section{margin-top:14px;padding:14px;background:#FBF8F1;border-left:3px solid var(--forest);}
+.bd-title{font-size:.7rem;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--forest);margin-bottom:10px;}
+.bd-grid{display:grid;grid-template-columns:1fr auto;gap:5px 14px;font-size:.83rem;font-variant-numeric:tabular-nums;}
+.bd-grid .neg{color:var(--red);}
+.bd-grid .tot{font-weight:700;border-top:1px solid var(--rule);padding-top:6px;}
+.bd-grid .max{font-weight:700;color:var(--canopy);}
+
+/* ── Sumario contenedor ── */
+.summary-card{background:#fff;border:1px solid var(--rule);border-top:3px solid var(--canopy);padding:18px 22px;margin-bottom:20px;}
+.summary-card h4{font-family:'Source Serif 4',serif;font-weight:600;font-size:1.15rem;color:var(--canopy);margin-bottom:10px;}
+.sc-grid{display:grid;grid-template-columns:1fr auto;gap:5px 14px;font-size:.83rem;font-variant-numeric:tabular-nums;}
+.sc-grid b{font-weight:600;color:var(--forest);}
+.sc-grid .neg{color:var(--red);}
+
+/* ── Historial ── */
+.hist-section{margin-top:30px;background:#fff;border:1px solid var(--rule);}
+.hist-head{padding:14px 18px;background:var(--bone);border-bottom:1px solid var(--rule);display:flex;justify-content:space-between;align-items:center;cursor:pointer;}
+.hist-head h4{font-family:'Source Serif 4',serif;font-weight:600;font-size:1.05rem;color:var(--forest);margin:0;}
+.hist-toggle{font-size:.72rem;color:var(--ochre);letter-spacing:.12em;text-transform:uppercase;font-weight:700;}
+.hist-body{padding:0;max-height:400px;overflow-y:auto;display:none;}
+.hist-body.show{display:block;}
+.hist-row{padding:10px 18px;border-bottom:1px solid var(--rule);font-size:.83rem;}
+.hist-row:last-child{border-bottom:none;}
+.hist-when{font-size:.72rem;color:var(--muted);letter-spacing:.08em;}
+.hist-who{font-weight:600;color:var(--forest);}
+.hist-who.productor{color:var(--ochre);}
+.hist-what{margin-top:2px;color:var(--ink);}
+.hist-empty{padding:24px;text-align:center;color:var(--muted);font-style:italic;font-size:.86rem;}
+
+/* ── Read-only info config/gastos ── */
+.info-block{margin-bottom:16px;padding:12px 16px;background:#FAFAF6;border:1px solid var(--rule);font-size:.82rem;}
+.info-block .ttl{font-size:.7rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;}
+.info-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px 16px;}
+.info-grid .it{display:flex;justify-content:space-between;gap:8px;}
+.info-grid .it .k{color:var(--muted);}
+.info-grid .it .v{font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums;}
+
 footer{margin-top:60px;padding:24px;text-align:center;font-size:.72rem;color:var(--muted);border-top:1px solid var(--rule);}
 
 @media (max-width:720px){
@@ -198,7 +244,18 @@ footer{margin-top:60px;padding:24px;text-align:center;font-size:.72rem;color:var
         <span><b id="d-prods">0</b> productos</span>
       </div>
 
+      <div id="d-info-config"></div>
+      <div id="d-info-gastos"></div>
+      <div id="d-summary"></div>
       <div id="d-products" class="products-grid"></div>
+
+      <div class="hist-section">
+        <div class="hist-head" id="hist-head">
+          <h4>Historial de cambios</h4>
+          <span class="hist-toggle" id="hist-toggle">▼ ver</span>
+        </div>
+        <div class="hist-body" id="hist-body"></div>
+      </div>
 
       <div class="action-bar" id="action-bar">
         <div class="save-status" id="save-status"></div>
@@ -397,8 +454,103 @@ function tiempoRelativo(iso) {
   return d.toLocaleDateString('es-GT');
 }
 
+// ─── Recalc: replica lógica del cotizador admin ──────────────────
+// Modifica currentCot.productos[i]._* (campos calculados)
+function recalcAll() {
+  if (!currentCot) return null;
+  const cfg = currentCot.config || {};
+  const tc = parseFloat(cfg.tcMXN) || 0.4425;
+  const ivaPct = (parseFloat(cfg.ivaPct) || 12) / 100;
+  const retIvaPct = (parseFloat(cfg.retIvaPct) || 80) / 100;
+  const prontoPct = (parseFloat(cfg.prontoPct) || 1.25) / 100;
+  const productos = currentCot.productos || [];
+
+  // Total kg para prorrateo
+  let totalKg = 0, totalCajas = 0, totalPallets = 0, totalLbs = 0;
+  productos.forEach(p => {
+    const kg = parseFloat(p.kgCaja) || 0;
+    const cxp = parseFloat(p.cajasPorPallet) || 0;
+    const pall = parseFloat(p.pallets) || 0;
+    const cajas = cxp * pall;
+    totalKg += cajas * kg;
+    totalLbs += cajas * kg * 2.20462;
+    totalCajas += cajas;
+    totalPallets += pall;
+  });
+
+  // Gastos totales en GTQ
+  const gastosMX = currentCot.gastosMX || [];
+  const gastosGT = currentCot.gastosGT || [];
+  let gMXmxn = 0, gMXgtq = 0, gGTgtq = 0;
+  gastosMX.forEach(g => { const m = parseFloat(g.monto) || 0; gMXmxn += m; gMXgtq += m * tc; });
+  gastosGT.forEach(g => { gGTgtq += parseFloat(g.monto) || 0; });
+
+  // Pass 1: venta y retenciones
+  let totVB = 0, totVN = 0, totRet = 0;
+  productos.forEach(p => {
+    const kg = parseFloat(p.kgCaja) || 0;
+    const ue = parseFloat(p.uniCaja) || 0;
+    const cxp = parseFloat(p.cajasPorPallet) || 0;
+    const pall = parseFloat(p.pallets) || 0;
+    const totC = cxp * pall;
+    const isU = p.modoVenta === 'unidad';
+    const cantVenta = isU ? totC * ue : totC * kg * 2.20462;
+    const precio = parseFloat(p.precioVentaU) || 0;
+    const vb = precio * cantVenta;
+    const sinIVA = vb / (1 + ivaPct);
+    const iva = vb - sinIVA;
+    const retIVA = iva * retIvaPct;
+    const pronto = vb * prontoPct;
+    const reten = retIVA + pronto;
+    const vn = vb - reten;
+    p._totCajas = totC;
+    p._cantVenta = cantVenta;
+    p._kgTotal = totC * kg;
+    p._lbsTotal = totC * kg * 2.20462;
+    p._unidTotal = isU ? totC * ue : 0;
+    p._ventaBruta = vb;
+    p._retenciones = reten;
+    p._ventaNeta = vn;
+    totVB += vb; totVN += vn; totRet += reten;
+  });
+
+  // Pass 2: prorratea gastos + comisión + máximo
+  let totGMX = 0, totGGT = 0, totCom = 0, totDispGTQ = 0;
+  productos.forEach(p => {
+    const isU = p.modoVenta === 'unidad';
+    const pctPeso = totalKg > 0 ? p._kgTotal / totalKg : 0;
+    const gMXp = gMXgtq * pctPeso;
+    const gGTp = gGTgtq * pctPeso;
+    const comPorU = parseFloat(p.comPorU) || 0;
+    const comProd = comPorU * p._cantVenta;
+    const dispGTQ = p._ventaNeta - gMXp - gGTp - comProd;
+    const dispMXN = tc > 0 ? dispGTQ / tc : 0;
+    const cantNeg = isU ? p._unidTotal : p._kgTotal;
+    const maxMXNu = cantNeg > 0 ? dispMXN / cantNeg : 0;
+    p._gMXp = gMXp; p._gGTp = gGTp; p._comProd = comProd;
+    p._dispGTQ = dispGTQ; p._dispMXN = dispMXN;
+    p._maxMXNu = maxMXNu;
+    p._uNeg = isU ? 'unidad' : 'kg';
+    totGMX += gMXp; totGGT += gGTp; totCom += comProd; totDispGTQ += dispGTQ;
+  });
+
+  return {
+    tc, ivaPct, retIvaPct, prontoPct,
+    totalKg, totalLbs, totalCajas, totalPallets,
+    gMXmxn, gMXgtq, gGTgtq,
+    totVB, totVN, totRet, totGMX, totGGT, totCom, totDispGTQ,
+    totDispMXN: tc > 0 ? totDispGTQ / tc : 0,
+  };
+}
+
 function showDetail(cot) {
   currentCot = cot;
+  // Inicializa arrays si faltan
+  if (!Array.isArray(currentCot.productos)) currentCot.productos = [];
+  if (!Array.isArray(currentCot.historial)) currentCot.historial = [];
+  // snapshot inicial para detectar cambios al guardar
+  currentCot._snapshot = JSON.stringify(currentCot.productos);
+
   $('dashboard-view').style.display = 'none';
   $('detail-view').style.display = 'block';
   $('save-status').textContent = '';
@@ -413,123 +565,233 @@ function showDetail(cot) {
   estadoEl.textContent = estado;
   estadoEl.className = 'estado-pill ' + estado;
 
-  // Última edición del productor
   const lastEl = $('d-last-update');
   if (cot.actualizadoEn) {
     lastEl.style.display = 'block';
-    lastEl.textContent = `Última edición tuya: ${tiempoRelativo(cot.actualizadoEn)} (${new Date(cot.actualizadoEn).toLocaleString('es-GT')})`;
+    lastEl.textContent = `Última edición: ${tiempoRelativo(cot.actualizadoEn)} (${new Date(cot.actualizadoEn).toLocaleString('es-GT')})`;
   } else {
     lastEl.style.display = 'none';
   }
 
-  // Banner si está cerrada
   const locked = estado === 'aceptada' || estado === 'rechazada';
   const banner = $('d-locked-banner');
   if (locked) {
     banner.style.display = 'block';
     banner.className = 'locked-banner ' + estado;
-    if (estado === 'aceptada') {
-      banner.innerHTML = `<b>Cotización aceptada.</b> Esta cotización ya fue cerrada y no se puede modificar. Para cualquier cambio contactá a AGROAJUA directamente.`;
-    } else {
-      banner.innerHTML = `<b>Cotización rechazada.</b> Esta cotización fue rechazada por vos. Si querés reabrirla, contactá a AGROAJUA.`;
-    }
+    banner.innerHTML = estado === 'aceptada'
+      ? `<b>Cotización aceptada.</b> Esta cotización ya fue cerrada y no se puede modificar. Para cualquier cambio contactá a AGROAJUA directamente.`
+      : `<b>Cotización rechazada.</b> Esta cotización fue rechazada. Si querés reabrirla, contactá a AGROAJUA.`;
   } else {
     banner.style.display = 'none';
   }
 
-  // Contenedor totales
-  const productos = cot.productos || [];
-  let totalPallets=0, totalCajas=0, totalKg=0;
-  productos.forEach(p => {
-    const cxp = +p.cajasPorPallet || 0;
-    const pall = +p.pallets || 0;
-    const kg = +p.kgCaja || 0;
-    totalPallets += pall;
-    totalCajas += cxp * pall;
-    totalKg += cxp * pall * kg;
-  });
-  $('d-pallets').textContent = fmt(totalPallets, 0);
-  $('d-cajas').textContent = fmt(totalCajas, 0);
-  $('d-kg').textContent = fmt(totalKg, 0);
-  $('d-prods').textContent = productos.length;
+  $('btn-guardar').disabled = locked;
+  $('btn-aceptar').disabled = locked;
+  $('btn-rechazar').disabled = locked;
+
+  renderHistorial();
+  renderAll();
+}
+
+function renderAll() {
+  const t = recalcAll();
+  if (!t) return;
+
+  $('d-pallets').textContent = fmt(t.totalPallets, 0);
+  $('d-cajas').textContent = fmt(t.totalCajas, 0);
+  $('d-kg').textContent = fmt(t.totalKg, 0);
+  $('d-prods').textContent = (currentCot.productos || []).length;
+
+  const locked = (currentCot.estado === 'aceptada' || currentCot.estado === 'rechazada');
+  const dis = locked ? 'disabled' : '';
+
+  // Info config (readonly)
+  $('d-info-config').innerHTML = `
+    <div class="info-block">
+      <div class="ttl">Configuración del contenedor (definida por AGROAJUA)</div>
+      <div class="info-grid">
+        <div class="it"><span class="k">TC MXN→GTQ</span><span class="v">${fmt(t.tc, 4)}</span></div>
+        <div class="it"><span class="k">IVA Guatemala</span><span class="v">${fmt(t.ivaPct*100, 1)} %</span></div>
+        <div class="it"><span class="k">Retención IVA</span><span class="v">${fmt(t.retIvaPct*100, 0)} %</span></div>
+        <div class="it"><span class="k">Pronto pago</span><span class="v">${fmt(t.prontoPct*100, 2)} %</span></div>
+      </div>
+    </div>`;
+
+  // Info gastos (readonly)
+  const gMX = (currentCot.gastosMX || []).map(g => `<div class="it"><span class="k">${g.concepto}</span><span class="v">$ ${fmt(parseFloat(g.monto)||0, 0)} MXN</span></div>`).join('');
+  const gGT = (currentCot.gastosGT || []).map(g => `<div class="it"><span class="k">${g.concepto}</span><span class="v">Q ${fmt(parseFloat(g.monto)||0, 0)}</span></div>`).join('');
+  $('d-info-gastos').innerHTML = `
+    <div class="info-block">
+      <div class="ttl">Gastos del contenedor (prorrateados por peso · definidos por AGROAJUA)</div>
+      <div style="font-size:.74rem;color:var(--muted);margin-bottom:6px;">México:</div>
+      <div class="info-grid">${gMX || '<i>(sin gastos MX)</i>'}</div>
+      <div style="font-size:.74rem;color:var(--muted);margin:8px 0 6px;">Guatemala:</div>
+      <div class="info-grid">${gGT || '<i>(sin gastos GT)</i>'}</div>
+      <div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--rule);display:flex;justify-content:space-between;font-size:.78rem;">
+        <span class="k">Total gastos en GTQ</span>
+        <span class="v">Q ${fmt(t.gMXgtq + t.gGTgtq, 2)}</span>
+      </div>
+    </div>`;
+
+  // Summary
+  $('d-summary').innerHTML = `
+    <div class="summary-card">
+      <h4>Resumen financiero del contenedor</h4>
+      <div class="sc-grid">
+        <span>Venta bruta total</span><b>Q ${fmt(t.totVB, 2)}</b>
+        <span class="neg">− Retenciones (IVA + pronto pago)</span><span class="neg">Q ${fmt(t.totRet, 2)}</span>
+        <span>Venta neta</span><b>Q ${fmt(t.totVN, 2)}</b>
+        <span class="neg">− Gastos México (GTQ)</span><span class="neg">Q ${fmt(t.totGMX, 2)}</span>
+        <span class="neg">− Gastos Guatemala</span><span class="neg">Q ${fmt(t.totGGT, 2)}</span>
+        <span class="neg">− Comisión AGROAJUA</span><span class="neg">Q ${fmt(t.totCom, 2)}</span>
+        <span style="border-top:1.5px solid var(--forest);padding-top:6px;font-weight:700;color:var(--canopy);">Disponible total al productor</span>
+        <b style="border-top:1.5px solid var(--forest);padding-top:6px;color:var(--canopy);">Q ${fmt(t.totDispGTQ, 2)}</b>
+        <span style="color:var(--muted);font-size:.78rem;">  equivalente</span>
+        <span style="color:var(--muted);font-size:.78rem;">$ ${fmt(t.totDispMXN, 2)} MXN</span>
+      </div>
+    </div>`;
 
   // Products
-  const config = cot.config || {};
-  const tcMXN = +config.tcMXN || 0.4425;
+  const productos = currentCot.productos;
   const productsEl = $('d-products');
   productsEl.innerHTML = productos.map((p, i) => {
     const isU = p.modoVenta === 'unidad';
-    const cxp = +p.cajasPorPallet || 0;
-    const pall = +p.pallets || 0;
-    const kg = +p.kgCaja || 0;
-    const ue = +p.uniCaja || 0;
-    const totCajas = cxp * pall;
-    const kgTot = totCajas * kg;
-    const lbsTot = kgTot * 2.20462;
-    const uniTot = isU ? totCajas * ue : 0;
-    // Máximo MXN/u — usar el calculado del admin (guardado en p._maxMXNu)
-    const maxMXNu = +p.maxMXNu || 0;
+    const uLbl = isU ? 'unidad' : 'kg';
     const propuesta = p.propuestaProductor || '';
+    const val = parseFloat(propuesta);
+    const cabe = Number.isFinite(val) && val > 0 && p._maxMXNu > 0 && val <= p._maxMXNu;
+    const malo = Number.isFinite(val) && val > 0 && p._maxMXNu > 0 && val > p._maxMXNu;
+    const cmpClass = cabe ? 'compare-line ok' : (malo ? 'compare-line bad' : 'compare-line');
+    const cmpText = cabe
+      ? `✓ Tu propuesta cabe — sobran $${fmt(p._maxMXNu - val, 2)} MXN/${uLbl}`
+      : (malo ? `✗ Excede el máximo por $${fmt(val - p._maxMXNu, 2)} MXN/${uLbl}` : '');
+
     return `
       <div class="pc">
         <div class="pc-head">
           <div class="pc-name">${p.nombre || '—'}</div>
           <span class="pc-mode-pill">${isU ? 'UNI' : 'LBS'}</span>
         </div>
-        <div class="pc-row"><span class="pc-label">Empaque</span><span class="pc-value">${p.empaque || 'caja'}</span></div>
-        <div class="pc-row"><span class="pc-label">Cantidad</span><span class="pc-value">${pall} pallets · ${fmt(totCajas, 0)} cajas</span></div>
-        <div class="pc-row"><span class="pc-label">Peso</span><span class="pc-value">${fmt(kgTot, 2)} kg · ${fmt(lbsTot, 2)} lbs</span></div>
-        ${isU ? `<div class="pc-row"><span class="pc-label">Unidades</span><span class="pc-value">${fmt(uniTot, 0)} unidades</span></div>` : ''}
+
+        <div class="edit-grid">
+          <span class="lbl">Empaque</span>
+          <span class="pc-value">${p.empaque || 'caja'}</span>
+        </div>
+        <div class="edit-grid">
+          <span class="lbl">Pallets</span>
+          <input class="edit-input" type="number" step="1" data-i="${i}" data-f="pallets" value="${p.pallets||0}" ${dis}>
+        </div>
+        <div class="edit-grid">
+          <span class="lbl">Cajas / pallet</span>
+          <input class="edit-input" type="number" step="1" data-i="${i}" data-f="cajasPorPallet" value="${p.cajasPorPallet||0}" ${dis}>
+        </div>
+        <div class="edit-grid">
+          <span class="lbl">Kg / caja</span>
+          <input class="edit-input" type="number" step="0.01" data-i="${i}" data-f="kgCaja" value="${p.kgCaja||0}" ${dis}>
+        </div>
+        ${isU ? `<div class="edit-grid">
+          <span class="lbl">Unidades / caja</span>
+          <input class="edit-input" type="number" step="1" data-i="${i}" data-f="uniCaja" value="${p.uniCaja||0}" ${dis}>
+        </div>` : ''}
+        <div class="edit-grid">
+          <span class="lbl">Total cajas</span>
+          <span class="pc-value"><b>${fmt(p._totCajas, 0)}</b></span>
+        </div>
+        <div class="edit-grid">
+          <span class="lbl">Peso total</span>
+          <span class="pc-value">${fmt(p._kgTotal, 2)} kg · ${fmt(p._lbsTotal, 2)} lbs</span>
+        </div>
+        ${isU ? `<div class="edit-grid">
+          <span class="lbl">Unidades totales</span>
+          <span class="pc-value">${fmt(p._unidTotal, 0)}</span>
+        </div>` : ''}
+
+        <div class="bd-section">
+          <div class="bd-title">Cálculo del máximo (transparente)</div>
+          <div class="bd-grid">
+            <span>Precio venta cliente · Q ${fmt(parseFloat(p.precioVentaU)||0, 2)}/${isU?'unidad':'lb'} × ${fmt(p._cantVenta, isU?0:2)}</span>
+            <b>Q ${fmt(p._ventaBruta, 2)}</b>
+            <span class="neg">− Retenciones IVA + pronto pago</span>
+            <span class="neg">Q ${fmt(p._retenciones, 2)}</span>
+            <span class="tot">Venta neta</span>
+            <span class="tot">Q ${fmt(p._ventaNeta, 2)}</span>
+            <span class="neg">− Gastos México prorrateados</span>
+            <span class="neg">Q ${fmt(p._gMXp, 2)}</span>
+            <span class="neg">− Gastos Guatemala prorrateados</span>
+            <span class="neg">Q ${fmt(p._gGTp, 2)}</span>
+            <span class="neg">− Comisión AGROAJUA · Q ${fmt(parseFloat(p.comPorU)||0, 2)}/${isU?'unidad':'lb'}</span>
+            <span class="neg">Q ${fmt(p._comProd, 2)}</span>
+            <span class="tot">Pago al productor en GTQ</span>
+            <b class="tot" style="color:var(--green);">Q ${fmt(p._dispGTQ, 2)}</b>
+            <span style="font-size:.78rem;color:var(--muted);">  ÷ TC ${fmt(currentCot.config?.tcMXN||0.4425, 4)} = MXN total</span>
+            <span style="font-size:.78rem;color:var(--muted);">$ ${fmt(p._dispMXN, 2)} MXN</span>
+            <span class="max">  ÷ ${fmt(isU?p._unidTotal:p._kgTotal, isU?0:2)} ${isU?'unidades':'kg'} =</span>
+            <b class="max">$ ${fmt(p._maxMXNu, 2)} MXN/${uLbl}</b>
+          </div>
+        </div>
 
         <div class="pc-max">
           <div class="pc-max-lbl">Máximo que podemos pagarte</div>
-          <div class="pc-max-val">$ ${fmt(maxMXNu, 2)} MXN / ${isU ? 'unidad' : 'kg'}</div>
+          <div class="pc-max-val">$ ${fmt(p._maxMXNu, 2)} MXN / ${uLbl}</div>
         </div>
 
         <div class="propuesta-block">
           <div class="propuesta-lbl">Tu propuesta de precio</div>
           <input type="number" step="0.01" class="propuesta-input" data-i="${i}" data-f="propuestaProductor"
-                 value="${propuesta}" placeholder="$ MXN / ${isU ? 'unidad' : 'kg'}"
-                 ${locked ? 'disabled' : ''}>
-          <div class="propuesta-hint">${locked ? 'Cotización cerrada — no editable.' : `Ingresá lo que querés que AGROAJUA te pague por ${isU ? 'unidad' : 'kg'}. Si cabe en el máximo, podemos cerrar.`}</div>
-          <div class="compare-line" id="cmp-${i}" style="display:none;"></div>
+                 value="${propuesta}" placeholder="$ MXN / ${uLbl}" ${dis}>
+          <div class="propuesta-hint">${locked ? 'Cotización cerrada — no editable.' : `Ingresá lo que querés que AGROAJUA te pague por ${uLbl}.`}</div>
+          ${cmpText ? `<div class="${cmpClass}">${cmpText}</div>` : ''}
         </div>
       </div>
     `;
   }).join('');
 
-  // Deshabilitar botones si está cerrada
-  $('btn-guardar').disabled = locked;
-  $('btn-aceptar').disabled = locked;
-  $('btn-rechazar').disabled = locked;
-
-  // Wire inputs propuesta
-  productsEl.querySelectorAll('.propuesta-input').forEach(inp => {
+  // Wire all editable inputs
+  productsEl.querySelectorAll('.edit-input, .propuesta-input').forEach(inp => {
     inp.addEventListener('input', (e) => {
       const i = +e.target.dataset.i;
-      const val = parseFloat(e.target.value);
-      currentCot.productos[i].propuestaProductor = e.target.value;
-      // Update comparison
-      const p = currentCot.productos[i];
-      const maxMXNu = +p.maxMXNu || 0;
-      const cmpEl = $(`cmp-${i}`);
-      if (Number.isFinite(val) && val > 0 && maxMXNu > 0) {
-        cmpEl.style.display = 'block';
-        if (val <= maxMXNu) {
-          cmpEl.className = 'compare-line ok';
-          cmpEl.textContent = `✓ Tu propuesta cabe — sobran $${fmt(maxMXNu - val, 2)} MXN/${p.modoVenta === 'unidad' ? 'unidad' : 'kg'}`;
-        } else {
-          cmpEl.className = 'compare-line bad';
-          cmpEl.textContent = `✗ Tu propuesta excede el máximo por $${fmt(val - maxMXNu, 2)} MXN/${p.modoVenta === 'unidad' ? 'unidad' : 'kg'}. AGROAJUA tendría que ajustar el precio venta para que cierre.`;
-        }
-      } else {
-        cmpEl.style.display = 'none';
-      }
+      const f = e.target.dataset.f;
+      const raw = e.target.value;
+      const val = (f === 'propuestaProductor') ? raw : (parseFloat(raw) || 0);
+      currentCot.productos[i][f] = val;
+      // Re-render con math actualizada
+      renderAll();
     });
-    // Trigger initial comparison
-    inp.dispatchEvent(new Event('input'));
   });
 }
+
+function renderHistorial() {
+  const body = $('hist-body');
+  const hist = currentCot?.historial || [];
+  if (hist.length === 0) {
+    body.innerHTML = '<div class="hist-empty">Sin cambios registrados todavía.</div>';
+    return;
+  }
+  body.innerHTML = hist.slice().reverse().map(h => {
+    const isProductor = (h.who || '').includes('@') && h.who !== 'agroajua@gmail.com';
+    const when = h.ts ? new Date(h.ts).toLocaleString('es-GT') : '—';
+    return `
+      <div class="hist-row">
+        <div class="hist-when">${when}</div>
+        <div><span class="hist-who ${isProductor?'productor':''}">${h.who || '—'}</span> — ${h.action || 'cambio'}</div>
+        <div class="hist-what">${h.summary || ''}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+// Toggle historial
+$('hist-head').addEventListener('click', () => {
+  const body = $('hist-body');
+  const tog = $('hist-toggle');
+  if (body.classList.contains('show')) {
+    body.classList.remove('show');
+    tog.textContent = '▼ ver';
+  } else {
+    body.classList.add('show');
+    tog.textContent = '▲ ocultar';
+  }
+});
 
 // ─── Acciones ────────────────────────────────────────────────────
 $('btn-guardar').addEventListener('click', () => saveCot(null));
@@ -539,6 +801,33 @@ $('btn-aceptar').addEventListener('click', () => {
 $('btn-rechazar').addEventListener('click', () => {
   if (confirm('¿Rechazar esta cotización? Después no podrás modificarla.')) saveCot('rechazada');
 });
+
+// Calcula diff entre snapshot y estado actual de productos
+function calcularCambios() {
+  const cambios = [];
+  let snapshot;
+  try { snapshot = JSON.parse(currentCot._snapshot || '[]'); } catch { snapshot = []; }
+  const labels = {
+    pallets: 'Pallets',
+    cajasPorPallet: 'Cajas/pallet',
+    kgCaja: 'Kg/caja',
+    uniCaja: 'Unidades/caja',
+    propuestaProductor: 'Propuesta MXN',
+  };
+  currentCot.productos.forEach((p, i) => {
+    const old = snapshot[i] || {};
+    Object.keys(labels).forEach(k => {
+      const a = old[k];
+      const b = p[k];
+      const aN = (a === '' || a == null) ? '—' : a;
+      const bN = (b === '' || b == null) ? '—' : b;
+      if (String(aN) !== String(bN)) {
+        cambios.push(`${p.nombre||'producto'} · ${labels[k]}: ${aN} → ${bN}`);
+      }
+    });
+  });
+  return cambios;
+}
 
 async function saveCot(nuevoEstado) {
   if (!currentCot) return;
@@ -553,28 +842,70 @@ async function saveCot(nuevoEstado) {
   status.textContent = 'Guardando…';
   status.className = 'save-status';
   try {
+    // Asegura math actualizada
+    recalcAll();
+
     const ahora = new Date().toISOString();
+    const who = currentUser.email;
+    const cambios = calcularCambios();
+
+    // Entrada de historial
+    const histEntry = {
+      ts: ahora,
+      who,
+      action: nuevoEstado === 'aceptada' ? 'aceptar' : nuevoEstado === 'rechazada' ? 'rechazar' : (cambios.length ? 'editar' : 'guardar'),
+      summary: nuevoEstado === 'aceptada' ? 'Aceptó y cerró la cotización' :
+               nuevoEstado === 'rechazada' ? 'Rechazó la cotización' :
+               (cambios.length ? cambios.join(' · ') : 'Guardó sin cambios'),
+    };
+    const historial = Array.isArray(currentCot.historial) ? currentCot.historial.slice() : [];
+    historial.push(histEntry);
+
+    // Productos limpios para guardar — solo campos persistentes, sin _calc
+    const productosClean = currentCot.productos.map(p => ({
+      nombre: p.nombre, empaque: p.empaque, modoVenta: p.modoVenta,
+      kgCaja: parseFloat(p.kgCaja) || 0,
+      uniCaja: parseFloat(p.uniCaja) || 0,
+      cajasPorPallet: parseFloat(p.cajasPorPallet) || 0,
+      pallets: parseFloat(p.pallets) || 0,
+      precioVentaU: parseFloat(p.precioVentaU) || 0,
+      comPorU: parseFloat(p.comPorU) || 0,
+      costoSugeridoMXN: String(p.costoSugeridoMXN || ''),
+      maxMXNu: Number.isFinite(p._maxMXNu) ? +p._maxMXNu.toFixed(4) : 0,
+      propuestaProductor: p.propuestaProductor || '',
+    }));
+
     const update = {
-      productos: currentCot.productos.map(p => ({ ...p, propuestaProductor: p.propuestaProductor || '' })),
+      productos: productosClean,
+      historial,
       actualizadoEn: ahora,
+      actualizadoPor: who,
       ultimaAccionProductor: nuevoEstado || 'propuesta',
     };
     if (nuevoEstado) update.estado = nuevoEstado;
     await updateDoc(doc(db, 'cotizacionesImport', currentCot.id), update);
+
     currentCot.actualizadoEn = ahora;
-    status.textContent = nuevoEstado === 'aceptada' ? '✓ Cotización aceptada y cerrada' : nuevoEstado === 'rechazada' ? '✓ Cotización rechazada' : '✓ Cambios guardados — podés volver a editar';
+    currentCot.actualizadoPor = who;
+    currentCot.historial = historial;
+    currentCot._snapshot = JSON.stringify(currentCot.productos);
+
+    status.textContent = nuevoEstado === 'aceptada' ? '✓ Cotización aceptada y cerrada'
+      : nuevoEstado === 'rechazada' ? '✓ Cotización rechazada'
+      : (cambios.length ? `✓ ${cambios.length} cambio(s) guardado(s)` : '✓ Guardado (sin cambios)');
     status.className = 'save-status ok';
+
     if (nuevoEstado) {
       currentCot.estado = nuevoEstado;
-      // Re-render con estado bloqueado
       showDetail(currentCot);
       status.textContent = nuevoEstado === 'aceptada' ? '✓ Cotización aceptada y cerrada' : '✓ Cotización rechazada';
       status.className = 'save-status ok';
     } else {
-      // Update last-edit display
+      // Refresca historial visible
+      renderHistorial();
       const lastEl = $('d-last-update');
       lastEl.style.display = 'block';
-      lastEl.textContent = `Última edición tuya: hace unos segundos (${new Date(ahora).toLocaleString('es-GT')})`;
+      lastEl.textContent = `Última edición: hace unos segundos (${new Date(ahora).toLocaleString('es-GT')})`;
     }
   } catch (err) {
     status.textContent = '✗ Error al guardar: ' + err.message;
