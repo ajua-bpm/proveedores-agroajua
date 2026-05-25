@@ -109,6 +109,13 @@ h2.section-title{font-family:'Source Serif 4',serif;font-size:1.55rem;font-weigh
 .save-status{padding:8px;font-size:.78rem;color:var(--muted);font-style:italic;margin-right:auto;}
 .save-status.ok{color:var(--green);font-style:normal;}
 .save-status.err{color:var(--red);font-style:normal;}
+.last-update{font-size:.72rem;color:var(--muted);margin-top:6px;font-style:italic;}
+.locked-banner{padding:14px 18px;margin-bottom:18px;border-left:3px solid var(--green);background:rgba(46,125,50,.06);font-size:.86rem;color:var(--ink);}
+.locked-banner.rechazada{border-left-color:var(--red);background:rgba(198,40,40,.06);}
+.locked-banner b{font-weight:700;color:var(--forest);}
+.locked-banner.rechazada b{color:var(--red);}
+.propuesta-input:disabled{background:#F5F1E8;color:var(--muted);cursor:not-allowed;}
+.btn-action:disabled{opacity:.4;cursor:not-allowed;pointer-events:none;}
 
 footer{margin-top:60px;padding:24px;text-align:center;font-size:.72rem;color:var(--muted);border-top:1px solid var(--rule);}
 
@@ -177,8 +184,11 @@ footer{margin-top:60px;padding:24px;text-align:center;font-size:.72rem;color:var
             Fecha: <b id="d-fecha">—</b> ·
             Estado: <span id="d-estado" class="estado-pill borrador">—</span>
           </div>
+          <div class="last-update" id="d-last-update" style="display:none;"></div>
         </div>
       </div>
+
+      <div id="d-locked-banner" class="locked-banner" style="display:none;"></div>
 
       <div class="summary-line">
         <span class="lbl">Contenedor</span>
@@ -190,11 +200,11 @@ footer{margin-top:60px;padding:24px;text-align:center;font-size:.72rem;color:var
 
       <div id="d-products" class="products-grid"></div>
 
-      <div class="action-bar">
+      <div class="action-bar" id="action-bar">
         <div class="save-status" id="save-status"></div>
-        <button class="btn-action btn-rechazar" id="btn-rechazar">Rechazar cotización</button>
-        <button class="btn-action btn-guardar" id="btn-guardar">Guardar mi propuesta</button>
-        <button class="btn-action btn-aceptar" id="btn-aceptar">Aceptar cotización</button>
+        <button class="btn-action btn-rechazar" id="btn-rechazar" title="Rechazar definitivamente">Rechazar</button>
+        <button class="btn-action btn-guardar" id="btn-guardar" title="Guardar cambios sin cerrar — podés volver a editar">Guardar borrador</button>
+        <button class="btn-action btn-aceptar" id="btn-aceptar" title="Aceptar definitivamente — esto cierra la cotización">Aceptar y cerrar</button>
       </div>
     </div>
   </main>
@@ -349,6 +359,18 @@ function showDashboard() {
 // ─── Detalle ─────────────────────────────────────────────────────
 $('back-btn').addEventListener('click', () => { loadCotizaciones(); showDashboard(); });
 
+function tiempoRelativo(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d)) return '';
+  const diff = (Date.now() - d.getTime()) / 1000;
+  if (diff < 60) return 'hace unos segundos';
+  if (diff < 3600) return `hace ${Math.floor(diff/60)} min`;
+  if (diff < 86400) return `hace ${Math.floor(diff/3600)} h`;
+  if (diff < 86400*7) return `hace ${Math.floor(diff/86400)} d`;
+  return d.toLocaleDateString('es-GT');
+}
+
 function showDetail(cot) {
   currentCot = cot;
   $('dashboard-view').style.display = 'none';
@@ -364,6 +386,30 @@ function showDetail(cot) {
   const estadoEl = $('d-estado');
   estadoEl.textContent = estado;
   estadoEl.className = 'estado-pill ' + estado;
+
+  // Última edición del productor
+  const lastEl = $('d-last-update');
+  if (cot.actualizadoEn) {
+    lastEl.style.display = 'block';
+    lastEl.textContent = `Última edición tuya: ${tiempoRelativo(cot.actualizadoEn)} (${new Date(cot.actualizadoEn).toLocaleString('es-GT')})`;
+  } else {
+    lastEl.style.display = 'none';
+  }
+
+  // Banner si está cerrada
+  const locked = estado === 'aceptada' || estado === 'rechazada';
+  const banner = $('d-locked-banner');
+  if (locked) {
+    banner.style.display = 'block';
+    banner.className = 'locked-banner ' + estado;
+    if (estado === 'aceptada') {
+      banner.innerHTML = `<b>Cotización aceptada.</b> Esta cotización ya fue cerrada y no se puede modificar. Para cualquier cambio contactá a AGROAJUA directamente.`;
+    } else {
+      banner.innerHTML = `<b>Cotización rechazada.</b> Esta cotización fue rechazada por vos. Si querés reabrirla, contactá a AGROAJUA.`;
+    }
+  } else {
+    banner.style.display = 'none';
+  }
 
   // Contenedor totales
   const productos = cot.productos || [];
@@ -417,13 +463,19 @@ function showDetail(cot) {
         <div class="propuesta-block">
           <div class="propuesta-lbl">Tu propuesta de precio</div>
           <input type="number" step="0.01" class="propuesta-input" data-i="${i}" data-f="propuestaProductor"
-                 value="${propuesta}" placeholder="$ MXN / ${isU ? 'unidad' : 'kg'}">
-          <div class="propuesta-hint">Ingresá lo que querés que AGROAJUA te pague por ${isU ? 'unidad' : 'kg'}. Si cabe en el máximo, podemos cerrar.</div>
+                 value="${propuesta}" placeholder="$ MXN / ${isU ? 'unidad' : 'kg'}"
+                 ${locked ? 'disabled' : ''}>
+          <div class="propuesta-hint">${locked ? 'Cotización cerrada — no editable.' : `Ingresá lo que querés que AGROAJUA te pague por ${isU ? 'unidad' : 'kg'}. Si cabe en el máximo, podemos cerrar.`}</div>
           <div class="compare-line" id="cmp-${i}" style="display:none;"></div>
         </div>
       </div>
     `;
   }).join('');
+
+  // Deshabilitar botones si está cerrada
+  $('btn-guardar').disabled = locked;
+  $('btn-aceptar').disabled = locked;
+  $('btn-rechazar').disabled = locked;
 
   // Wire inputs propuesta
   productsEl.querySelectorAll('.propuesta-input').forEach(inp => {
@@ -455,31 +507,48 @@ function showDetail(cot) {
 
 // ─── Acciones ────────────────────────────────────────────────────
 $('btn-guardar').addEventListener('click', () => saveCot(null));
-$('btn-aceptar').addEventListener('click', () => saveCot('aceptada'));
+$('btn-aceptar').addEventListener('click', () => {
+  if (confirm('¿Aceptar y cerrar esta cotización? Después no podrás modificarla.')) saveCot('aceptada');
+});
 $('btn-rechazar').addEventListener('click', () => {
-  if (confirm('¿Confirmás rechazar esta cotización?')) saveCot('rechazada');
+  if (confirm('¿Rechazar esta cotización? Después no podrás modificarla.')) saveCot('rechazada');
 });
 
 async function saveCot(nuevoEstado) {
   if (!currentCot) return;
+  const estadoActual = currentCot.estado || 'borrador';
+  if (estadoActual === 'aceptada' || estadoActual === 'rechazada') {
+    const status = $('save-status');
+    status.textContent = '✗ Cotización ya cerrada, no se puede modificar';
+    status.className = 'save-status err';
+    return;
+  }
   const status = $('save-status');
   status.textContent = 'Guardando…';
   status.className = 'save-status';
   try {
+    const ahora = new Date().toISOString();
     const update = {
       productos: currentCot.productos.map(p => ({ ...p, propuestaProductor: p.propuestaProductor || '' })),
-      actualizadoEn: new Date().toISOString(),
+      actualizadoEn: ahora,
       ultimaAccionProductor: nuevoEstado || 'propuesta',
     };
     if (nuevoEstado) update.estado = nuevoEstado;
     await updateDoc(doc(db, 'cotizacionesImport', currentCot.id), update);
-    status.textContent = nuevoEstado === 'aceptada' ? '✓ Cotización aceptada' : nuevoEstado === 'rechazada' ? 'Cotización rechazada' : '✓ Propuesta guardada';
+    currentCot.actualizadoEn = ahora;
+    status.textContent = nuevoEstado === 'aceptada' ? '✓ Cotización aceptada y cerrada' : nuevoEstado === 'rechazada' ? '✓ Cotización rechazada' : '✓ Cambios guardados — podés volver a editar';
     status.className = 'save-status ok';
     if (nuevoEstado) {
       currentCot.estado = nuevoEstado;
-      const estadoEl = $('d-estado');
-      estadoEl.textContent = nuevoEstado;
-      estadoEl.className = 'estado-pill ' + nuevoEstado;
+      // Re-render con estado bloqueado
+      showDetail(currentCot);
+      status.textContent = nuevoEstado === 'aceptada' ? '✓ Cotización aceptada y cerrada' : '✓ Cotización rechazada';
+      status.className = 'save-status ok';
+    } else {
+      // Update last-edit display
+      const lastEl = $('d-last-update');
+      lastEl.style.display = 'block';
+      lastEl.textContent = `Última edición tuya: hace unos segundos (${new Date(ahora).toLocaleString('es-GT')})`;
     }
   } catch (err) {
     status.textContent = '✗ Error al guardar: ' + err.message;
