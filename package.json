@@ -1,0 +1,9 @@
+{
+  "name": "proveedores-agroajua",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Portal de Proveedores AGROAJUA — cada productor mexicano ve solo sus cotizaciones",
+  "scripts": {
+    "deploy": "vercel deploy --prod --yes"
+  }
+}
