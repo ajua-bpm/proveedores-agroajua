@@ -303,19 +303,45 @@ onAuthStateChanged(auth, async (user) => {
 // ─── Cargar cotizaciones ─────────────────────────────────────────
 async function loadCotizaciones() {
   const listEl = $('cot-list');
-  listEl.innerHTML = '<div class="cot-empty">Cargando cotizaciones…</div>';
+  const emailQ = (currentUser.email||'').toLowerCase().trim();
+  listEl.innerHTML = `<div class="cot-empty">Cargando cotizaciones para <b>${emailQ}</b>…</div>`;
   try {
+    // Primero query filtrada por email
     const q = query(
       collection(db, 'cotizacionesImport'),
-      where('productorEmail', '==', currentUser.email.toLowerCase())
+      where('productorEmail', '==', emailQ)
     );
     const snap = await getDocs(q);
     cotizaciones = [];
     snap.forEach(d => cotizaciones.push({ id: d.id, ...d.data() }));
+    // Si no hay nada, probar también buscando en meta.productorEmail (fallback compatibilidad)
+    if (cotizaciones.length === 0) {
+      try {
+        const qAll = query(collection(db, 'cotizacionesImport'));
+        const snapAll = await getDocs(qAll);
+        const todas = [];
+        snapAll.forEach(d => todas.push({ id: d.id, ...d.data() }));
+        const matchMeta = todas.filter(c => (c.meta?.productorEmail||'').toLowerCase().trim() === emailQ);
+        cotizaciones = matchMeta;
+        if (cotizaciones.length === 0 && todas.length > 0) {
+          // Hay docs en colección pero ninguno hace match — mostrar info debug
+          const emails = [...new Set(todas.map(c => c.productorEmail || c.meta?.productorEmail).filter(Boolean))];
+          listEl.innerHTML = `<div class="cot-empty" style="text-align:left;">
+            <b>No tenés cotizaciones asignadas con email <code>${emailQ}</code>.</b><br><br>
+            En la base hay ${todas.length} cotización(es) con emails asignados:<br>
+            <code style="font-size:.85em;">${emails.join(', ') || '(ninguno con email)'}</code><br><br>
+            Si tu email debería estar en la lista, contactá a AGROAJUA — puede haber un typo en la asignación.
+          </div>`;
+          return;
+        }
+      } catch (e2) {
+        // Ignora si la query sin filtro también falla
+      }
+    }
     cotizaciones.sort((a,b) => (b.fecha||'').localeCompare(a.fecha||''));
     renderDashboard();
   } catch (err) {
-    listEl.innerHTML = `<div class="cot-empty" style="color:var(--red);">Error al cargar: ${err.message}</div>`;
+    listEl.innerHTML = `<div class="cot-empty" style="color:var(--red);">Error al cargar: ${err.message}<br><small>Email usado: ${emailQ}</small></div>`;
   }
 }
 
