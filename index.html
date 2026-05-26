@@ -278,7 +278,7 @@ footer{margin-top:60px;padding:24px;text-align:center;font-size:.72rem;color:var
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js';
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, sendPasswordResetEmail } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js';
-import { getFirestore, collection, query, where, orderBy, getDocs, doc, getDoc, updateDoc } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js';
+import { getFirestore, collection, query, where, orderBy, getDocs, doc, getDoc, updateDoc, addDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js';
 
 // Firebase config — mismo proyecto que app.agroajua.com
 const firebaseConfig = {
@@ -346,16 +346,41 @@ $('reset-btn').addEventListener('click', async () => {
 
 $('logout-btn').addEventListener('click', () => signOut(auth));
 
+// Evita doble registro si auth state cambia varias veces
+let _accessLogged = false;
+
+async function registrarAcceso(user) {
+  if (_accessLogged) return;
+  _accessLogged = true;
+  try {
+    await addDoc(collection(db, 'accesosPortal'), {
+      email: (user.email || '').toLowerCase(),
+      uid: user.uid,
+      ts: new Date().toISOString(),
+      tsServer: serverTimestamp(),
+      userAgent: navigator.userAgent || '',
+      lang: navigator.language || '',
+      screen: `${screen.width}x${screen.height}`,
+      tipo: 'login',
+    });
+  } catch (e) {
+    // No-bloquear si falla el log
+    console.warn('No se pudo registrar acceso:', e.message);
+  }
+}
+
 onAuthStateChanged(auth, async (user) => {
   if (user) {
     currentUser = user;
     $('login-view').style.display = 'none';
     $('app-view').classList.add('show');
     $('user-email').textContent = user.email;
+    registrarAcceso(user); // fire & forget
     await loadCotizaciones();
     showDashboard();
   } else {
     currentUser = null;
+    _accessLogged = false;
     $('login-view').style.display = 'flex';
     $('app-view').classList.remove('show');
   }
